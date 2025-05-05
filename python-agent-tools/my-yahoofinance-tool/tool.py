@@ -111,12 +111,10 @@ class CustomAgentTool(BaseAgentTool):
         # Check if result is in cache and not expired
         if cache_key in self.cache and current_time - self.cache_timestamps.get(cache_key, 0) < self.cache_expiry:
             logger.debug(f"Using cached data for action: {action}")
-            trace.info(f"Using cached data for action: {action}")
             return self.cache[cache_key]
         
         # Log the request
         logger.info(f"Fetching data for action: {action}")
-        trace.info(f"Fetching data for action: {action}")
         
         try:
             # Normalize ticker/symbol inputs
