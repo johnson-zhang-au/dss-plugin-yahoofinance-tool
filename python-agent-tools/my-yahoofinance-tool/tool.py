@@ -301,53 +301,13 @@ class CustomAgentTool(BaseAgentTool):
                 end_date = hist.index[-1].strftime('%m/%d/%Y') if not hist.empty else "N/A"
                 time_range = f"{start_date} to {end_date}"
                 
-                # Create a formatted table for human-readable display
-                formatted_output = f"Historical data for {company_name} ({symbol}) ({period}, {interval} intervals)\n"
-                formatted_output += f"Currency: {currency}\n"
-                formatted_output += f"Trading Period: {time_range}\n\n"
-                
-                # Table header
-                formatted_output += f"{'Date':<11} | {'Open':<9} | {'High':<9} | {'Low':<9} | {'Close':<9} | {'Volume':<12}\n"
-                formatted_output += f"{'-' * 11}|{'-' * 11}|{'-' * 11}|{'-' * 11}|{'-' * 11}|{'-' * 14}\n"
-                
-                # Table rows (limit to 7 rows for readability)
-                display_rows = min(len(hist_dict), 7)
-                sample_indices = []
-                
-                if display_rows <= 7:
-                    sample_indices = range(display_rows)
-                else:
-                    # Sample evenly distributed rows for longer histories
-                    step = len(hist_dict) // 7
-                    for i in range(0, len(hist_dict), step):
-                        if len(sample_indices) < 7:
-                            sample_indices.append(i)
-                
-                for i in sample_indices:
-                    if i < len(hist_dict):
-                        row = hist_dict[i]
-                        date = row["date"].split()[0]  # Just the date part
-                        open_price = f"${row['open']:.2f}" if row["open"] else "N/A"
-                        high = f"${row['high']:.2f}" if row["high"] else "N/A"
-                        low = f"${row['low']:.2f}" if row["low"] else "N/A"
-                        close = f"${row['close']:.2f}" if row["close"] else "N/A"
-                        volume = f"{row['volume']:,}" if row["volume"] else "N/A"
-                        
-                        formatted_output += f"{date:<10} | {open_price:<9} | {high:<9} | {low:<9} | {close:<9} | {volume:<12}\n"
-                
-                # Add price change information
-                if price_change is not None and price_change_pct is not None:
-                    change_sign = "+" if price_change > 0 else ""
-                    formatted_output += f"\nPrice Change: {change_sign}${price_change:.2f} ({change_sign}{price_change_pct:.2f}%)"
-                
                 # Add enhanced data to output
                 output.update({
                     "name": company_name,
                     "currency": currency,
                     "time_range": time_range,
                     "price_change": price_change,
-                    "price_change_percent": price_change_pct,
-                    "formatted_output": formatted_output
+                    "price_change_percent": price_change_pct
                 })
             
             logger.info(f"Successfully retrieved history for {symbol}")
@@ -588,8 +548,7 @@ class CustomAgentTool(BaseAgentTool):
             
             return {
                 "output": {
-                    "indices": indices_data,
-                    "formatted_output": formatted_output.strip()
+                    "indices": indices_data
                 },
                 "sources": [{
                     "toolCallDescription": f"Retrieved current market data for {len(indices_data)} indices"
@@ -725,8 +684,7 @@ class CustomAgentTool(BaseAgentTool):
                     "currency": currency,
                     "statement_type": statement_type,
                     "period": period,
-                    "financials": financials,
-                    "formatted_output": formatted_output
+                    "financials": financials
                 },
                 "sources": [{
                     "toolCallDescription": f"Retrieved {statement_type} financial statements for {symbol} ({period})"
@@ -837,33 +795,13 @@ class CustomAgentTool(BaseAgentTool):
                 
                 processed_news.append(news_item)
             
-            # Create formatted news output
-            formatted_output = f"=== Latest News for {news_source} ===\n\n"
-            
-            for i, item in enumerate(processed_news, 1):
-                formatted_output += f"{i}. {item['title']}\n"
-                formatted_output += f"   Source: {item['publisher']} | Date: {item['publish_date']}\n"
-                
-                if item['summary']:
-                    # Truncate long summaries
-                    summary = item['summary']
-                    if len(summary) > 300:
-                        summary = summary[:297] + "..."
-                    formatted_output += f"   Summary: {summary}\n"
-                
-                if item['related_tickers']:
-                    formatted_output += f"   Related Tickers: {', '.join(item['related_tickers'])}\n"
-                
-                formatted_output += f"   Link: {item['link']}\n\n"
-            
             logger.info(f"Successfully retrieved {len(processed_news)} news articles for {news_source}")
             
             return {
                 "output": {
                     "source": news_source,
                     "count": len(processed_news),
-                    "news": processed_news,
-                    "formatted_output": formatted_output
+                    "news": processed_news
                 },
                 "sources": [{
                     "toolCallDescription": f"Retrieved {len(processed_news)} news articles for {news_source}"

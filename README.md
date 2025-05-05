@@ -185,8 +185,7 @@ Retrieves recent news articles related to a stock or the general market.
         "timestamp": "2023-11-09T15:30:45.123456"
       },
       // More indices...
-    ],
-    "formatted_output": "S&P 500\nPrice: 4,508.24\nChange: -23.17 (-0.51%)\nPrevious Close: 4,531.41\nDay Range: 4,496.41 - 4,538.26\n\nDow Jones Industrial Average\n..."
+    ]
   }
 }
 ```
