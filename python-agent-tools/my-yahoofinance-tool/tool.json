@@ -1,25 +1,54 @@
-/* This file is the descriptor for custom agent tool my-yahoofinance-tool */
 {
-    "meta" : {
-        // label: name of the agent tool as displayed, should be short
-        "label": "Custom agent tool my-yahoofinance-tool",
-
-        // description: longer string to help end users understand what this agent tool does.
-        "description": "This is the description of the custom agent tool my-yahoofinance-tool",
-
-        // icon: must be one of the FontAwesome 5.15.4 icons, complete list here at https://fontawesome.com/v5/docs/
-        "icon": "fas fa-magic"
+    "meta": {
+        "label": "Yahoo Finance Data Tool",
+        "description": "This tool provides access to Yahoo Finance market data including stock quotes, historical data, and option chains",
+        "icon": "fas fa-chart-line"
     },
-
-    /* params:
-    DSS will generate a form from this list of requested parameters.
-    Your component code can then access the value provided by users using the "name" field of each parameter.
-
-    Available parameter types include:
-    STRING, INT, DOUBLE, BOOLEAN, DATE, SELECT, TEXTAREA, PRESET and others.
-
-    For the full list and for more details, see the documentation: https://doc.dataiku.com/dss/latest/plugins/reference/params.html
-    */
     "params": [
+        {
+            "name": "api_key",
+            "label": "API Key (Optional)",
+            "type": "STRING",
+            "description": "Optional API key for Yahoo Finance API if using premium services",
+            "mandatory": false
+        },
+        {
+            "name": "cache_expiry",
+            "label": "Cache Expiry (minutes)",
+            "type": "INT",
+            "defaultValue": 5,
+            "description": "How long to cache results in minutes",
+            "mandatory": false
+        },
+        {
+            "name": "logging_level",
+            "label": "Logging Level",
+            "type": "SELECT",
+            "description": "The level of logging that the tool generates",
+            "mandatory": true,
+            "selectChoices": [
+                {
+                    "value": "DEBUG",
+                    "label": "DEBUG"
+                },
+                {
+                    "value": "INFO",
+                    "label": "INFO"
+                },
+                {
+                    "value": "WARNING",
+                    "label": "WARNING"
+                },
+                {
+                    "value": "ERROR",
+                    "label": "ERROR"
+                },
+                {
+                    "value": "CRITICAL",
+                    "label": "CRITICAL"
+                }
+            ],
+            "defaultValue": "INFO"
+        }
     ]
-}
+} 
