@@ -51,23 +51,9 @@ Retrieves the current stock quote including price, change, volume, and other key
 }
 ```
 
-### 2. Get Historical Price Data (`history`)
+### 2. Get Historical Price Data (`stock_history`)
 
-Fetches historical price data for a stock with various time periods and intervals.
-
-**Sample Usage:**
-```json
-{
-  "action": "history",
-  "ticker": "MSFT",
-  "period": "6mo",
-  "interval": "1d"
-}
-```
-
-### 3. Get Enhanced Historical Data (`stock_history`)
-
-Similar to `history` but provides enhanced outputs including price change calculations and formatted tables.
+Fetches historical price data for a stock with additional analysis, company information, and formatted output. Includes price change calculations, company information, and a formatted table view.
 
 **Sample Usage:**
 ```json
@@ -79,7 +65,7 @@ Similar to `history` but provides enhanced outputs including price change calcul
 }
 ```
 
-### 4. Get Options Chain Data (`options`)
+### 3. Get Options Chain Data (`options`)
 
 Retrieves options chain data for calls, puts, or both.
 
@@ -93,7 +79,7 @@ Retrieves options chain data for calls, puts, or both.
 }
 ```
 
-### 5. Get Company Information (`info`)
+### 4. Get Company Information (`info`)
 
 Retrieves fundamental company information and profile.
 
@@ -105,7 +91,7 @@ Retrieves fundamental company information and profile.
 }
 ```
 
-### 6. Get Market Indices (`market_indices`)
+### 5. Get Market Indices (`market_indices`)
 
 Retrieves current data for major market indices.
 
@@ -117,7 +103,7 @@ Retrieves current data for major market indices.
 }
 ```
 
-### 7. Get Financial Statements (`company_financials`)
+### 6. Get Financial Statements (`company_financials`)
 
 Retrieves various financial statements for a company.
 
@@ -131,7 +117,7 @@ Retrieves various financial statements for a company.
 }
 ```
 
-### 8. Get Stock News (`stock_news`)
+### 7. Get Stock News (`stock_news`)
 
 Retrieves recent news articles related to a stock or the general market.
 
@@ -148,7 +134,7 @@ Retrieves recent news articles related to a stock or the general market.
 
 | Parameter | Type | Description | Example Values |
 |-----------|------|-------------|----------------|
-| `action` | string | The action to perform | "quote", "history", "options", "info", "market_indices", "stock_history", "company_financials", "stock_news" |
+| `action` | string | The action to perform | "quote", "stock_history", "options", "info", "market_indices", "company_financials", "stock_news" |
 | `ticker` / `symbol` | string | The stock ticker symbol | "AAPL", "MSFT", "GOOG" |
 | `period` | string | Time period for historical data | "1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max" |
 | `interval` | string | Data interval for historical data | "1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "1d", "5d", "1wk", "1mo", "3mo" |

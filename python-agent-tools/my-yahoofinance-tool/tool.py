@@ -37,7 +37,7 @@ class CustomAgentTool(BaseAgentTool):
     def get_descriptor(self, tool):
         logger.debug("Generating descriptor for the Yahoo Finance tool.")
         return {
-            "description": "Get financial data from Yahoo Finance. You can retrieve stock quotes, historical data, options data, and news for a given ticker symbol.",
+            "description": "Get financial data from Yahoo Finance. You can retrieve stock quotes, historical data, options data, company information, and news for a given ticker symbol.",
             "inputSchema": {
                 "$id": "https://example.com/agents/tools/yahoofinance/input",
                 "title": "Input for the Yahoo Finance tool",
@@ -45,8 +45,8 @@ class CustomAgentTool(BaseAgentTool):
                 "properties": {
                     "action": {
                         "type": "string",
-                        "description": "The action to perform. Options: quote, history, options, info, market_indices, stock_history, company_financials, stock_news",
-                        "enum": ["quote", "history", "options", "info", "market_indices", "stock_history", "company_financials", "stock_news"]
+                        "description": "The action to perform. Options: quote (get current stock price), stock_history (get historical price data with analysis and formatting), options (get options chain data), info (get company information), market_indices (get market index data), company_financials (get financial statements), stock_news (get latest news)",
+                        "enum": ["quote", "stock_history", "options", "info", "market_indices", "company_financials", "stock_news"]
                     },
                     "ticker": {
                         "type": "string",
@@ -126,15 +126,14 @@ class CustomAgentTool(BaseAgentTool):
                     raise ValueError("Missing required parameter: symbol or ticker")
                 logger.debug(f"Processing quote request for {symbol}")
                 result = self._get_stock_quote(symbol)
-            elif action == "history" or action == "stock_history":
+            elif action == "stock_history":
                 if not symbol:
                     raise ValueError("Missing required parameter: symbol or ticker")
                 period = args.get("period", "1mo")
                 interval = args.get("interval", "1d")
-                # Use enhanced format for stock_history action
-                enhanced_format = (action == "stock_history")
-                logger.debug(f"Processing history request for {symbol} with period {period} and interval {interval}")
-                result = self._get_stock_history(symbol, period, interval, enhanced_format)
+                
+                logger.debug(f"Processing stock_history request for {symbol} with period {period} and interval {interval}")
+                result = self._get_stock_history(symbol, period, interval)
             elif action == "options":
                 if not symbol:
                     raise ValueError("Missing required parameter: symbol or ticker")
@@ -227,7 +226,7 @@ class CustomAgentTool(BaseAgentTool):
             logger.error(f"Error getting quote for {symbol}: {str(e)}", exc_info=True)
             raise Exception(f"Error getting quote for {symbol}: {str(e)}")
     
-    def _get_stock_history(self, symbol, period="1mo", interval="1d", enhanced_format=False):
+    def _get_stock_history(self, symbol, period="1mo", interval="1d"):
         """
         Get historical price data
         
@@ -235,7 +234,6 @@ class CustomAgentTool(BaseAgentTool):
             symbol (str): Stock ticker symbol
             period (str): Time period (1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max)
             interval (str): Data interval (1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo)
-            enhanced_format (bool): Whether to include enhanced formatting and calculations
             
         Returns:
             Historical stock data for the specified symbol and time range
@@ -244,15 +242,10 @@ class CustomAgentTool(BaseAgentTool):
         stock = yf.Ticker(symbol)
         
         try:
-            # Get stock info for enhanced format
-            info = None
-            currency = "USD"
-            company_name = symbol
-            
-            if enhanced_format:
-                info = stock.info
-                currency = info.get("currency", "USD")
-                company_name = info.get("shortName", symbol)
+            # Get stock info for company name and currency
+            info = stock.info
+            currency = info.get("currency", "USD")
+            company_name = info.get("shortName", symbol)
             
             # Get historical data
             hist = stock.history(period=period, interval=interval)
@@ -262,7 +255,7 @@ class CustomAgentTool(BaseAgentTool):
                 return {
                     "output": {
                         "symbol": symbol,
-                        "name": company_name if enhanced_format else symbol,
+                        "name": company_name,
                         "message": "No historical data available for this period and interval"
                     },
                     "sources": [{
@@ -282,11 +275,6 @@ class CustomAgentTool(BaseAgentTool):
                     "volume": row.get("Volume", 0)
                 })
             
-            # For basic format, limit to most recent 20 data points
-            if not enhanced_format and len(hist_dict) > 20:
-                logger.debug(f"Limiting history results from {len(hist_dict)} to 20 most recent data points")
-                hist_dict = hist_dict[-20:]
-                
             # Standard output
             output = {
                 "symbol": symbol,
@@ -296,7 +284,7 @@ class CustomAgentTool(BaseAgentTool):
             }
             
             # Add enhanced information if requested
-            if enhanced_format:
+            if not hist.empty:
                 # Calculate price change over the period
                 first_close = hist_dict[0]["close"] if hist_dict else None
                 last_close = hist_dict[-1]["close"] if hist_dict else None
@@ -314,7 +302,7 @@ class CustomAgentTool(BaseAgentTool):
                 time_range = f"{start_date} to {end_date}"
                 
                 # Create a formatted table for human-readable display
-                formatted_output = f"Historical data for {symbol} ({period}, {interval} intervals)\n"
+                formatted_output = f"Historical data for {company_name} ({symbol}) ({period}, {interval} intervals)\n"
                 formatted_output += f"Currency: {currency}\n"
                 formatted_output += f"Trading Period: {time_range}\n\n"
                 
@@ -628,10 +616,10 @@ class CustomAgentTool(BaseAgentTool):
         stock = yf.Ticker(symbol)
         
         try:
-            # Get company info
+            # Get stock info for company name and currency
             info = stock.info
-            company_name = info.get("shortName", symbol)
             currency = info.get("currency", "USD")
+            company_name = info.get("shortName", symbol)
             
             # Validate statement type
             valid_types = ["income", "balance", "cash", "all"]
