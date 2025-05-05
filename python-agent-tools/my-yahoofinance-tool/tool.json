@@ -6,18 +6,11 @@
     },
     "params": [
         {
-            "name": "api_key",
-            "label": "API Key (Optional)",
-            "type": "STRING",
-            "description": "Optional API key for Yahoo Finance API if using premium services",
-            "mandatory": false
-        },
-        {
             "name": "cache_expiry",
             "label": "Cache Expiry (minutes)",
             "type": "INT",
             "defaultValue": 5,
-            "description": "How long to cache results in minutes",
+            "description": "How long to cache results in minutes to reduce API calls and avoid rate limiting",
             "mandatory": false
         },
         {
