@@ -10,8 +10,7 @@ from utils.logging import logger
 import requests
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-import io
-import base64
+import os
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 
@@ -21,6 +20,10 @@ class CustomAgentTool(BaseAgentTool):
         self.cache = {}
         self.cache_timestamps = {}
         self.cache_expiry = config.get("cache_expiry", 5) * 60  # Convert to seconds
+        
+        # Create charts directory if it doesn't exist
+        self.charts_dir = os.path.join(os.path.dirname(__file__), "charts")
+        os.makedirs(self.charts_dir, exist_ok=True)
         
         # Set up logging
         self.setup_logging()
@@ -805,22 +808,29 @@ class CustomAgentTool(BaseAgentTool):
         
         try:
             # CNN Money's Fear & Greed Index API endpoint
-            url = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
+            url = "https://api.alternative.me/fng/"
+            params = {
+                "limit": 1,
+                "format": "json"
+            }
             
-            response = requests.get(url)
+            response = requests.get(url, params=params)
             response.raise_for_status()
             
             data = response.json()
             
+            if not data.get("data"):
+                raise ValueError("No Fear & Greed Index data available")
+            
             # Get the most recent data point
-            current_data = data["fear_and_greed"]["score"][-1]
+            current_data = data["data"][0]
             
             # Get score and rating from the API response
-            score = current_data["score"]
-            rating = current_data["rating"]
+            score = int(current_data["value"])
+            rating = current_data["value_classification"]
             
             # Format timestamp
-            timestamp = datetime.fromtimestamp(current_data["timestamp"] / 1000).strftime("%Y-%m-%d %H:%M:%S")
+            timestamp = datetime.fromtimestamp(int(current_data["timestamp"])).strftime("%Y-%m-%d %H:%M:%S")
             
             logger.info(f"Successfully retrieved Fear & Greed Index: {score} ({rating})")
             
@@ -828,11 +838,10 @@ class CustomAgentTool(BaseAgentTool):
                 "output": {
                     "score": score,
                     "rating": rating,
-                    "timestamp": timestamp,
-                    "message": f"Current Fear & Greed Index: {score} ({rating})"
+                    "timestamp": timestamp
                 },
                 "sources": [{
-                    "toolCallDescription": "Retrieved current Fear & Greed Index from CNN Money"
+                    "toolCallDescription": "Retrieved current Fear & Greed Index from Alternative.me"
                 }]
             }
         except Exception as e:
@@ -851,7 +860,7 @@ class CustomAgentTool(BaseAgentTool):
             args (dict): Additional arguments for data retrieval
             
         Returns:
-            Visualization image and data
+            Visualization image path and data
         """
         logger.debug(f"Creating visualization for {data_type} with chart type {chart_type}")
         
@@ -911,6 +920,9 @@ class CustomAgentTool(BaseAgentTool):
                 if ax2:
                     ax2.legend(loc='upper right')
                 
+                # Generate filename
+                filename = f"{symbol}_{period}_{chart_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                
             elif data_type == "market_indices":
                 indices = args.get("indices", ["^GSPC", "^DJI", "^IXIC"])
                 data = self._get_market_indices(indices)
@@ -930,6 +942,9 @@ class CustomAgentTool(BaseAgentTool):
                 ax.set_ylabel("Value")
                 ax.grid(True, alpha=0.3)
                 plt.xticks(rotation=45)
+                
+                # Generate filename
+                filename = f"market_indices_{chart_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
                 
             elif data_type == "financials":
                 if not args.get("symbol") and not args.get("ticker"):
@@ -964,6 +979,9 @@ class CustomAgentTool(BaseAgentTool):
                 ax.legend()
                 plt.xticks(rotation=45)
                 
+                # Generate filename
+                filename = f"{symbol}_financials_{statement}_{chart_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                
             elif data_type == "fear_greed":
                 data = self._get_fear_greed_index()
                 
@@ -995,24 +1013,23 @@ class CustomAgentTool(BaseAgentTool):
                 # Format x-axis
                 ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
                 fig.autofmt_xdate()
+                
+                # Generate filename
+                filename = f"fear_greed_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
             
             else:
                 raise ValueError(f"Unsupported data type for visualization: {data_type}")
             
-            # Adjust layout and save to buffer
+            # Adjust layout and save to file
             fig.tight_layout()
-            buf = io.BytesIO()
-            fig.savefig(buf, format='png', bbox_inches='tight')
-            buf.seek(0)
+            filepath = os.path.join(self.charts_dir, filename)
+            fig.savefig(filepath, format='png', bbox_inches='tight')
             
-            # Convert to base64
-            img_str = base64.b64encode(buf.getvalue()).decode('utf-8')
-            
-            logger.info(f"Successfully created visualization for {data_type}")
+            logger.info(f"Successfully created visualization for {data_type} at {filepath}")
             
             return {
                 "output": {
-                    "image": img_str,
+                    "image_path": filepath,
                     "data": data["output"]
                 },
                 "sources": [{
