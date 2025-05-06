@@ -13,6 +13,9 @@ import matplotlib.dates as mdates
 import os
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+import dataiku
+from dataiku.core.intercom import backend_json_call
+import io
 
 class CustomAgentTool(BaseAgentTool):
     def set_config(self, config, plugin_config):
@@ -21,13 +24,57 @@ class CustomAgentTool(BaseAgentTool):
         self.cache_timestamps = {}
         self.cache_expiry = config.get("cache_expiry", 5) * 60  # Convert to seconds
         
-        # Create charts directory if it doesn't exist
-        self.charts_dir = os.path.join(os.path.dirname(__file__), "charts")
-        os.makedirs(self.charts_dir, exist_ok=True)
+        # Get the managed folder from config
+        self.charts_folder = dataiku.Folder(config.get("upload_folder"))
+        self.public_url_prefix = config.get("public_url_prefix", "")
         
         # Set up logging
         self.setup_logging()
         
+    def _setup_charts_folder(self, config):
+        """
+        Sets up the managed folder for storing charts.
+        
+        Args:
+            config (dict): Tool configuration
+            
+        Returns:
+            dataiku.Folder: Dataiku folder object for charts
+        """
+        folder_name = config.get("charts_folder_name", "yahoo_finance_charts")
+        folder_type = config.get("charts_folder_type", "azure_blob")
+        
+        try:
+            # Check if folder exists
+            try:
+                folder = dataiku.Folder(folder_name)
+                logger.info(f"Using existing managed folder: {folder_name}")
+                return folder
+            except:
+                # Create new folder if it doesn't exist
+                logger.info(f"Creating new managed folder: {folder_name}")
+                
+                # Create folder configuration
+                folder_config = {
+                    "type": folder_type,
+                    "params": {
+                        "container": config.get("azure_container", "charts"),
+                        "path": config.get("azure_path", "/"),
+                        "connection": config.get("azure_connection", ""),
+                        "publicAccess": True  # Ensure public access for image URLs
+                    }
+                }
+                
+                # Create the folder
+                folder = dataiku.Folder.create(folder_name, folder_config)
+                logger.info(f"Successfully created managed folder: {folder_name}")
+                return folder
+                
+        except Exception as e:
+            error_msg = f"Error setting up charts folder: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            raise Exception(error_msg)
+
     def setup_logging(self):
         """
         Sets up the logging level using the logger.
@@ -860,7 +907,7 @@ class CustomAgentTool(BaseAgentTool):
             args (dict): Additional arguments for data retrieval
             
         Returns:
-            Visualization image path and data
+            Visualization image URL and data
         """
         logger.debug(f"Creating visualization for {data_type} with chart type {chart_type}")
         
@@ -1020,22 +1067,33 @@ class CustomAgentTool(BaseAgentTool):
             else:
                 raise ValueError(f"Unsupported data type for visualization: {data_type}")
             
-            # Adjust layout and save to file
+            # Adjust layout and save to buffer
             fig.tight_layout()
-            filepath = os.path.join(self.charts_dir, filename)
-            fig.savefig(filepath, format='png', bbox_inches='tight')
+            buf = io.BytesIO()
+            fig.savefig(buf, format='png', bbox_inches='tight')
+            buf.seek(0)
             
-            logger.info(f"Successfully created visualization for {data_type} at {filepath}")
-            
-            return {
-                "output": {
-                    "image_path": filepath,
-                    "data": data["output"]
-                },
-                "sources": [{
-                    "toolCallDescription": f"Created {chart_type} chart for {data_type} data"
-                }]
-            }
+            # Upload to managed folder
+            try:
+                self.charts_folder.upload_stream(filename, buf)
+                logger.info(f"Successfully uploaded chart to managed folder: {filename}")
+                
+                # Build the public URL using the prefix and filename
+                url = f"{self.public_url_prefix.rstrip('/')}/{filename}"
+                
+                return {
+                    "output": {
+                        "image_url": url,
+                        "data": data["output"]
+                    },
+                    "sources": [{
+                        "toolCallDescription": f"Created {chart_type} chart for {data_type} data"
+                    }]
+                }
+            except Exception as e:
+                error_msg = f"Error uploading chart to managed folder: {str(e)}"
+                logger.error(error_msg, exc_info=True)
+                raise Exception(error_msg)
             
         except Exception as e:
             error_msg = f"Error creating visualization for {data_type}: {str(e)}"

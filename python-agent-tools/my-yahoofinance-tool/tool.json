@@ -42,6 +42,20 @@
                 }
             ],
             "defaultValue": "INFO"
+        },
+        {
+            "type": "FOLDER",
+            "name": "upload_folder",
+            "label": "Upload Documents Folder",
+            "description": "The folder saves images and documents uploaded by users while chatting. Image upload is only activated if it is supported by the LLM.",
+            "mandatory": false
+        },
+        {
+            "type": "STRING",
+            "name": "public_url_prefix",
+            "label": "Public URL Prefix",
+            "description": "The base URL prefix for accessing uploaded files (e.g., https://your-storage-account.blob.core.windows.net/container)",
+            "mandatory": false
         }
     ]
 } 
