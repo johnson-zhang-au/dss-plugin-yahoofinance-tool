@@ -7,6 +7,13 @@ import json
 import time
 from datetime import datetime, timedelta
 from utils.logging import logger
+import requests
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import io
+import base64
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 
 class CustomAgentTool(BaseAgentTool):
     def set_config(self, config, plugin_config):
@@ -45,8 +52,8 @@ class CustomAgentTool(BaseAgentTool):
                 "properties": {
                     "action": {
                         "type": "string",
-                        "description": "The action to perform. Options: quote (get current stock price), stock_history (get historical price data with analysis and formatting), options (get options chain data), info (get company information), market_indices (get market index data), company_financials (get financial statements), stock_news (get latest news)",
-                        "enum": ["quote", "stock_history", "options", "info", "market_indices", "company_financials", "stock_news"]
+                        "description": "The action to perform. Options: quote (get current stock price), stock_history (get historical price data with analysis and formatting), options (get options chain data), info (get company information), market_indices (get market index data), company_financials (get financial statements), stock_news (get latest news), fear_greed (get Fear & Greed Index), visualize (create charts for various data types)",
+                        "enum": ["quote", "stock_history", "options", "info", "market_indices", "company_financials", "stock_news", "fear_greed", "visualize"]
                     },
                     "ticker": {
                         "type": "string",
@@ -92,6 +99,23 @@ class CustomAgentTool(BaseAgentTool):
                         "description": "Number of items to retrieve (e.g., news articles)",
                         "minimum": 1,
                         "maximum": 10
+                    },
+                    "chartType": {
+                        "type": "string",
+                        "description": "Type of chart to create for visualization",
+                        "enum": ["line", "area", "candlestick", "bar", "scatter"]
+                    },
+                    "dataType": {
+                        "type": "string",
+                        "description": "Type of data to visualize",
+                        "enum": ["stock_history", "market_indices", "financials", "fear_greed"]
+                    },
+                    "metrics": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Specific metrics to include in the chart (e.g., ['close', 'volume'] for stock history)"
                     }
                 },
                 "required": ["action"]
@@ -162,6 +186,19 @@ class CustomAgentTool(BaseAgentTool):
                 count = min(args.get("count", 5), 10)  # Default 5, max 10
                 logger.debug(f"Processing stock news request for {symbol if symbol else 'general market'}, count: {count}")
                 result = self._get_stock_news(symbol, count)
+            elif action == "fear_greed":
+                logger.debug("Processing Fear & Greed Index request")
+                result = self._get_fear_greed_index()
+            elif action == "visualize":
+                data_type = args.get("dataType")
+                chart_type = args.get("chartType", "line")
+                metrics = args.get("metrics", [])
+                
+                if not data_type:
+                    raise ValueError("Missing required parameter: dataType")
+                
+                logger.debug(f"Processing visualization request for {data_type} with chart type {chart_type}")
+                result = self._create_visualization(data_type, chart_type, metrics, args)
             else:
                 error_msg = f"Invalid action: {action}"
                 logger.error(error_msg)
@@ -525,25 +562,6 @@ class CustomAgentTool(BaseAgentTool):
                 indices_data.append(index_data)
                 logger.debug(f"Retrieved data for index {index_symbol} ({name})")
             
-            # Create a formatted output string for human-readable display
-            formatted_output = ""
-            for index in indices_data:
-                name = index["name"]
-                price = f"{index['price']:,.2f}" if index['price'] else "N/A"
-                change = f"{index['change']:,.2f}" if index['change'] else "N/A"
-                change_pct = f"{index['changePercent']:.2f}%" if index['changePercent'] else "N/A"
-                prev_close = f"{index['previousClose']:,.2f}" if index['previousClose'] else "N/A"
-                day_low = f"{index['dayLow']:,.2f}" if index['dayLow'] else "N/A"
-                day_high = f"{index['dayHigh']:,.2f}" if index['dayHigh'] else "N/A"
-                
-                change_sign = "+" if index['change'] and index['change'] > 0 else ""
-                
-                formatted_output += f"{name}\n"
-                formatted_output += f"Price: {price}\n"
-                formatted_output += f"Change: {change_sign}{change} ({change_sign}{change_pct})\n"
-                formatted_output += f"Previous Close: {prev_close}\n"
-                formatted_output += f"Day Range: {day_low} - {day_high}\n\n"
-            
             logger.info(f"Successfully retrieved data for {len(indices_data)} market indices")
             
             return {
@@ -591,77 +609,40 @@ class CustomAgentTool(BaseAgentTool):
                 raise ValueError(f"Invalid period: {period}. Must be one of {valid_periods}")
             
             financials = {}
-            formatted_output = f"Financial Statements for {company_name} ({symbol})\nCurrency: {currency}\n\n"
             
             # Get the requested financial statements
             if statement_type == "income" or statement_type == "all":
                 if period == "annual":
                     income_stmt = stock.income_stmt
-                    period_label = "Annual"
                 else:
                     income_stmt = stock.quarterly_income_stmt
-                    period_label = "Quarterly"
                 
                 # Process income statement
                 if not income_stmt.empty:
                     income_data = self._process_financial_statement(income_stmt)
                     financials["income_statement"] = income_data
-                    
-                    # Format income statement for human-readable output
-                    formatted_output += f"=== {period_label} Income Statement ===\n"
-                    for item, values in income_data.items():
-                        formatted_output += f"{item}:\n"
-                        for date, value in values.items():
-                            if value is not None:
-                                value_str = f"{value:,.0f}" if abs(value) >= 1 else f"{value:.2f}"
-                                formatted_output += f"  {date}: {value_str}\n"
-                        formatted_output += "\n"
             
             if statement_type == "balance" or statement_type == "all":
                 if period == "annual":
                     balance_sheet = stock.balance_sheet
-                    period_label = "Annual"
                 else:
                     balance_sheet = stock.quarterly_balance_sheet
-                    period_label = "Quarterly"
                 
                 # Process balance sheet
                 if not balance_sheet.empty:
                     balance_data = self._process_financial_statement(balance_sheet)
                     financials["balance_sheet"] = balance_data
-                    
-                    # Format balance sheet for human-readable output
-                    formatted_output += f"=== {period_label} Balance Sheet ===\n"
-                    for item, values in balance_data.items():
-                        formatted_output += f"{item}:\n"
-                        for date, value in values.items():
-                            if value is not None:
-                                value_str = f"{value:,.0f}" if abs(value) >= 1 else f"{value:.2f}"
-                                formatted_output += f"  {date}: {value_str}\n"
-                        formatted_output += "\n"
             
             if statement_type == "cash" or statement_type == "all":
                 if period == "annual":
                     cash_flow = stock.cashflow
-                    period_label = "Annual"
                 else:
                     cash_flow = stock.quarterly_cashflow
-                    period_label = "Quarterly"
                 
                 # Process cash flow statement
                 if not cash_flow.empty:
                     cash_data = self._process_financial_statement(cash_flow)
                     financials["cash_flow"] = cash_data
-                    
-                    # Format cash flow statement for human-readable output
-                    formatted_output += f"=== {period_label} Cash Flow Statement ===\n"
-                    for item, values in cash_data.items():
-                        formatted_output += f"{item}:\n"
-                        for date, value in values.items():
-                            if value is not None:
-                                value_str = f"{value:,.0f}" if abs(value) >= 1 else f"{value:.2f}"
-                                formatted_output += f"  {date}: {value_str}\n"
-                        formatted_output += "\n"
             
             if not financials:
                 return {
@@ -812,3 +793,236 @@ class CustomAgentTool(BaseAgentTool):
             error_msg = f"Error getting news for {symbol if symbol else 'general market'}: {str(e)}"
             logger.error(error_msg, exc_info=True)
             raise Exception(error_msg)
+
+    def _get_fear_greed_index(self):
+        """
+        Gets the current Fear & Greed Index value from CNN Money.
+        
+        Returns:
+            Current Fear & Greed Index data including score and rating
+        """
+        logger.debug("Getting Fear & Greed Index data")
+        
+        try:
+            # CNN Money's Fear & Greed Index API endpoint
+            url = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
+            
+            response = requests.get(url)
+            response.raise_for_status()
+            
+            data = response.json()
+            
+            # Get the most recent data point
+            current_data = data["fear_and_greed"]["score"][-1]
+            
+            # Get score and rating from the API response
+            score = current_data["score"]
+            rating = current_data["rating"]
+            
+            # Format timestamp
+            timestamp = datetime.fromtimestamp(current_data["timestamp"] / 1000).strftime("%Y-%m-%d %H:%M:%S")
+            
+            logger.info(f"Successfully retrieved Fear & Greed Index: {score} ({rating})")
+            
+            return {
+                "output": {
+                    "score": score,
+                    "rating": rating,
+                    "timestamp": timestamp,
+                    "message": f"Current Fear & Greed Index: {score} ({rating})"
+                },
+                "sources": [{
+                    "toolCallDescription": "Retrieved current Fear & Greed Index from CNN Money"
+                }]
+            }
+        except Exception as e:
+            error_msg = f"Error getting Fear & Greed Index: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            raise Exception(error_msg)
+
+    def _create_visualization(self, data_type, chart_type, metrics, args):
+        """
+        Creates a visualization for the specified data type and chart type.
+        
+        Args:
+            data_type (str): Type of data to visualize
+            chart_type (str): Type of chart to create
+            metrics (list): Specific metrics to include
+            args (dict): Additional arguments for data retrieval
+            
+        Returns:
+            Visualization image and data
+        """
+        logger.debug(f"Creating visualization for {data_type} with chart type {chart_type}")
+        
+        try:
+            # Create figure with specific size and DPI
+            fig = Figure(figsize=(12, 8), dpi=100)
+            canvas = FigureCanvas(fig)
+            
+            # Get the data based on data type
+            if data_type == "stock_history":
+                if not args.get("symbol") and not args.get("ticker"):
+                    raise ValueError("Missing required parameter: symbol or ticker")
+                symbol = args.get("symbol", args.get("ticker"))
+                period = args.get("period", "1mo")
+                interval = args.get("interval", "1d")
+                data = self._get_stock_history(symbol, period, interval)
+                
+                # Default metrics if none specified
+                if not metrics:
+                    metrics = ["close", "volume"]
+                
+                # Create subplots
+                ax1 = fig.add_subplot(111)
+                ax2 = ax1.twinx() if "volume" in metrics else None
+                
+                # Convert dates to datetime objects
+                dates = [datetime.strptime(point["date"], "%Y-%m-%d %H:%M:%S") for point in data["output"]["data"]]
+                
+                # Plot price data
+                for metric in metrics:
+                    if metric in ["open", "high", "low", "close"]:
+                        values = [point[metric] for point in data["output"]["data"]]
+                        if chart_type == "candlestick":
+                            # For candlestick, we need OHLC data
+                            if metric == "close":
+                                ax1.plot(dates, values, label=metric.capitalize(), linewidth=2)
+                        else:
+                            ax1.plot(dates, values, label=metric.capitalize(), linewidth=2)
+                
+                # Plot volume if requested
+                if "volume" in metrics and ax2:
+                    volume = [point["volume"] for point in data["output"]["data"]]
+                    ax2.bar(dates, volume, alpha=0.3, color='gray', label='Volume')
+                    ax2.set_ylabel('Volume')
+                
+                # Format the plot
+                ax1.set_title(f"{symbol} Stock Price History")
+                ax1.set_xlabel('Date')
+                ax1.set_ylabel('Price')
+                ax1.grid(True, alpha=0.3)
+                ax1.legend(loc='upper left')
+                
+                # Format x-axis dates
+                ax1.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+                fig.autofmt_xdate()
+                
+                if ax2:
+                    ax2.legend(loc='upper right')
+                
+            elif data_type == "market_indices":
+                indices = args.get("indices", ["^GSPC", "^DJI", "^IXIC"])
+                data = self._get_market_indices(indices)
+                
+                # Create bar chart
+                ax = fig.add_subplot(111)
+                names = [index["name"] for index in data["output"]["indices"]]
+                values = [index["price"] for index in data["output"]["indices"]]
+                
+                if chart_type == "bar":
+                    ax.bar(names, values)
+                else:
+                    ax.plot(names, values, marker='o')
+                
+                ax.set_title("Market Indices Comparison")
+                ax.set_xlabel("Index")
+                ax.set_ylabel("Value")
+                ax.grid(True, alpha=0.3)
+                plt.xticks(rotation=45)
+                
+            elif data_type == "financials":
+                if not args.get("symbol") and not args.get("ticker"):
+                    raise ValueError("Missing required parameter: symbol or ticker")
+                symbol = args.get("symbol", args.get("ticker"))
+                statement = args.get("statement", "income")
+                period = args.get("period", "annual")
+                data = self._get_company_financials(symbol, statement, period)
+                
+                # Default metrics if none specified
+                if not metrics:
+                    metrics = ["Total Revenue", "Net Income"]
+                
+                ax = fig.add_subplot(111)
+                
+                # Plot each metric
+                for metric in metrics:
+                    if metric in data["output"]["financials"].get("income_statement", {}):
+                        values = data["output"]["financials"]["income_statement"][metric]
+                        dates = list(values.keys())
+                        values = list(values.values())
+                        
+                        if chart_type == "bar":
+                            ax.bar(dates, values, label=metric)
+                        else:
+                            ax.plot(dates, values, marker='o', label=metric)
+                
+                ax.set_title(f"{data['output']['name']} Financial Metrics")
+                ax.set_xlabel("Date")
+                ax.set_ylabel("Value")
+                ax.grid(True, alpha=0.3)
+                ax.legend()
+                plt.xticks(rotation=45)
+                
+            elif data_type == "fear_greed":
+                data = self._get_fear_greed_index()
+                
+                ax = fig.add_subplot(111)
+                
+                # Plot the score
+                score = data["output"]["score"]
+                timestamp = datetime.strptime(data["output"]["timestamp"], "%Y-%m-%d %H:%M:%S")
+                
+                # Add colored bands
+                colors = ['red', 'orange', 'yellow', 'lightgreen', 'green']
+                labels = ['Extreme Fear', 'Fear', 'Neutral', 'Greed', 'Extreme Greed']
+                ranges = [(0, 20), (21, 40), (41, 60), (61, 80), (81, 100)]
+                
+                for (start, end), color, label in zip(ranges, colors, labels):
+                    ax.axhspan(start, end, color=color, alpha=0.2, label=label)
+                
+                # Plot the score
+                ax.plot([timestamp], [score], 'bo', markersize=10)
+                ax.axhline(y=score, color='blue', linestyle='--', alpha=0.3)
+                
+                ax.set_title("Fear & Greed Index")
+                ax.set_xlabel("Date")
+                ax.set_ylabel("Score")
+                ax.set_ylim(0, 100)
+                ax.grid(True, alpha=0.3)
+                ax.legend()
+                
+                # Format x-axis
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+                fig.autofmt_xdate()
+            
+            else:
+                raise ValueError(f"Unsupported data type for visualization: {data_type}")
+            
+            # Adjust layout and save to buffer
+            fig.tight_layout()
+            buf = io.BytesIO()
+            fig.savefig(buf, format='png', bbox_inches='tight')
+            buf.seek(0)
+            
+            # Convert to base64
+            img_str = base64.b64encode(buf.getvalue()).decode('utf-8')
+            
+            logger.info(f"Successfully created visualization for {data_type}")
+            
+            return {
+                "output": {
+                    "image": img_str,
+                    "data": data["output"]
+                },
+                "sources": [{
+                    "toolCallDescription": f"Created {chart_type} chart for {data_type} data"
+                }]
+            }
+            
+        except Exception as e:
+            error_msg = f"Error creating visualization for {data_type}: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            raise Exception(error_msg)
+        finally:
+            plt.close(fig)
